@@ -41,27 +41,21 @@ type MinPossibleSet = {
 }
 
 const minPossibleSets: MinPossibleSet[] = games.map((game) => {
-  const cubes: {
-    red: number[]
-    green: number[]
-    blue: number[]
-  } = {
-    red: [],
-    green: [],
-    blue: [],
-  }
+  const red: number[] = []
+  const green: number[] = []
+  const blue: number[] = []
 
   game.draws.forEach((draw) => {
-    cubes.red.push(draw.find((cube) => cube.color === 'red')?.amount ?? 0)
-    cubes.green.push(draw.find((cube) => cube.color === 'green')?.amount ?? 0)
-    cubes.blue.push(draw.find((cube) => cube.color === 'blue')?.amount ?? 0)
+    red.push(draw.find((cube) => cube.color === 'red')?.amount ?? 0)
+    green.push(draw.find((cube) => cube.color === 'green')?.amount ?? 0)
+    blue.push(draw.find((cube) => cube.color === 'blue')?.amount ?? 0)
   })
 
   return {
     id: game.id,
-    red: Math.max(...cubes.red),
-    green: Math.max(...cubes.green),
-    blue: Math.max(...cubes.blue),
+    red: Math.max(...red),
+    green: Math.max(...green),
+    blue: Math.max(...blue),
   }
 })
 
