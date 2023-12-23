@@ -1,6 +1,6 @@
 // const rawContent = Deno.readTextFileSync('./input_1_test_1.txt')
-const rawContent = Deno.readTextFileSync('./input_1_test_2.txt')
-// const rawContent = Deno.readTextFileSync('./input_1.txt')
+// const rawContent = Deno.readTextFileSync('./input_1_test_2.txt')
+const rawContent = Deno.readTextFileSync('./input_1.txt')
 
 // console.log(rawContent)
 // console.log('-------------------')
@@ -12,15 +12,21 @@ const PULSE = {
 
 type Pulse = (typeof PULSE)[keyof typeof PULSE]
 
+type System = Module[]
+
+type Input = {
+  module: string
+  value: Pulse
+}
+
 interface Module {
   type: string
   name: string
-  inputModuleNames: string[]
-  outputModulesNames: string[]
-  outputModules: Module[]
+  inputModules: string[]
+  outputModules: string[]
   input: Input[]
-  tick(): Pulse[]
-  process(): Pulse[]
+  tick(context: System): Pulse[]
+  process(context: System, input: Input): Pulse[]
   init?(): void
 }
 
@@ -48,39 +54,30 @@ interface Untyped extends Module {
   reset(): void
 }
 
-type System = { [name: string]: Module }
-
-type Input = {
-  module: string
-  value: Pulse
-}
-
-const globalPulses = {
-  high: 0,
-  low: 0,
-}
-
-function getFlipFlop(name: string, outputModulesNames: string[]): FlipFlop {
+function getFlipFlop(name: string, outputModules: string[]): FlipFlop {
   return {
     type: 'flipflop',
     name,
     state: 'off',
-    inputModuleNames: [],
-    outputModulesNames,
-    outputModules: [],
+    inputModules: [],
+    outputModules,
     input: [],
-    tick() {
+    tick(context: System) {
       if (this.input.length === 0) {
         return []
       }
 
-      const outputs = this.process()
+      const outputs: Pulse[] = []
+      this.input.forEach((input) => {
+        const o = this.process(context, input)
+        outputs.push(...o)
+      })
       this.input = []
 
       return outputs
     },
-    process() {
-      const inputValue = this.input[0]?.value
+    process(context: System, input: Input) {
+      const inputValue = input.value
 
       if (inputValue === undefined) {
         throw new Error('Input value is undefined')
@@ -93,15 +90,12 @@ function getFlipFlop(name: string, outputModulesNames: string[]): FlipFlop {
 
       const outputs: Pulse[] = []
 
-      this.outputModules.forEach((module) => {
-        console.log(this.name, output, module.name)
-        module.input.push({ module: this.name, value: output })
+      this.outputModules.forEach((moduleName) => {
+        console.log(this.name, output, moduleName)
+        context
+          .find((module) => module.name === moduleName)!
+          .input.push({ module: this.name, value: output })
         outputs.push(output)
-        if (output === PULSE.HIGH) {
-          globalPulses.high += 1
-        } else {
-          globalPulses.low += 1
-        }
       })
 
       this.state = this.state === 'on' ? 'off' : 'on'
@@ -111,32 +105,29 @@ function getFlipFlop(name: string, outputModulesNames: string[]): FlipFlop {
   }
 }
 
-function getConjunction(
-  name: string,
-  outputModulesNames: string[]
-): Conjunction {
+function getConjunction(name: string, outputModules: string[]): Conjunction {
   return {
     type: 'conjunction',
     name,
     memory: {},
-    inputModuleNames: [],
-    outputModulesNames,
-    outputModules: [],
+    inputModules: [],
+    outputModules,
     input: [],
-    tick() {
+    tick(context: System) {
       if (this.input.length === 0) {
         return []
       }
-
-      const outputs = this.process()
+      const outputs: Pulse[] = []
+      this.input.forEach((input) => {
+        const o = this.process(context, input)
+        outputs.push(...o)
+      })
       this.input = []
 
       return outputs
     },
-    process() {
-      this.input.forEach(({ module, value }) => {
-        this.memory[module] = value
-      })
+    process(context: System, input: Input) {
+      this.memory[input.module] = input.value
 
       const output = Object.values(this.memory).every(
         (pulse) => pulse === PULSE.HIGH
@@ -146,46 +137,46 @@ function getConjunction(
 
       const outputs: Pulse[] = []
 
-      this.outputModules.forEach((module) => {
-        console.log(this.name, output, module.name)
-        module.input.push({ module: this.name, value: output })
+      this.outputModules.forEach((moduleName) => {
+        console.log(this.name, output, moduleName)
+        context
+          .find((module) => module.name === moduleName)!
+          .input.push({ module: this.name, value: output })
         outputs.push(output)
-        if (output === PULSE.HIGH) {
-          globalPulses.high += 1
-        } else {
-          globalPulses.low += 1
-        }
       })
 
       return outputs
     },
     init() {
       this.memory = Object.fromEntries(
-        this.inputModuleNames.map((name) => [name, PULSE.LOW])
+        this.inputModules.map((name) => [name, PULSE.LOW])
       )
     },
   }
 }
 
-function getBroadcaster(outputModulesNames: string[]): Broadcaster {
+function getBroadcaster(outputModules: string[]): Broadcaster {
   return {
     type: 'broadcaster',
     name: 'broadcaster',
-    inputModuleNames: [],
-    outputModulesNames,
-    outputModules: [],
+    inputModules: [],
+    outputModules,
     input: [],
-    tick() {
+    tick(context: System) {
       if (this.input.length === 0) {
         return []
       }
 
-      const outputs = this.process()
+      const outputs: Pulse[] = []
+      this.input.forEach((input) => {
+        const o = this.process(context, input)
+        outputs.push(...o)
+      })
       this.input = []
 
       return outputs
     },
-    process() {
+    process(context: System) {
       const pulse = this.input[0]?.value
 
       if (pulse === undefined) {
@@ -194,15 +185,12 @@ function getBroadcaster(outputModulesNames: string[]): Broadcaster {
 
       const outputs: Pulse[] = []
 
-      this.outputModules.forEach((module) => {
-        console.log(this.name, pulse, module.name)
-        module.input.push({ module: this.name, value: pulse })
+      this.outputModules.forEach((moduleName) => {
+        console.log(this.name, pulse, moduleName)
+        context
+          .find((module) => module.name === moduleName)!
+          .input.push({ module: this.name, value: pulse })
         outputs.push(pulse)
-        if (pulse === PULSE.HIGH) {
-          globalPulses.high += 1
-        } else {
-          globalPulses.low += 1
-        }
       })
 
       return outputs
@@ -214,21 +202,24 @@ function getButton(): Button {
   return {
     type: 'button',
     name: 'button',
-    inputModuleNames: [],
-    outputModulesNames: ['broadcaster'],
-    outputModules: [],
+    inputModules: [],
+    outputModules: ['broadcaster'],
     input: [],
-    tick() {
+    tick(context: System) {
       if (this.input.length === 0) {
         return []
       }
 
-      const outputs = this.process()
+      const outputs: Pulse[] = []
+      this.input.forEach((input) => {
+        const o = this.process(context, input)
+        outputs.push(...o)
+      })
       this.input = []
 
       return outputs
     },
-    process() {
+    process(context: System) {
       const pulse = this.input[0]?.value
 
       if (pulse === undefined) {
@@ -237,15 +228,12 @@ function getButton(): Button {
 
       const outputs: Pulse[] = []
 
-      this.outputModules.forEach((module) => {
-        console.log(this.name, pulse, module.name)
-        module.input.push({ module: this.name, value: pulse })
+      this.outputModules.forEach((moduleName) => {
+        console.log(this.name, pulse, moduleName)
+        context
+          .find((module) => module.name === moduleName)!
+          .input.push({ module: this.name, value: pulse })
         outputs.push(pulse)
-        if (pulse === PULSE.HIGH) {
-          globalPulses.high += 1
-        } else {
-          globalPulses.low += 1
-        }
       })
 
       return outputs
@@ -258,23 +246,25 @@ function getUntyped(name: string): Untyped {
     type: 'untyped',
     name,
     values: [],
-    inputModuleNames: [],
-    outputModulesNames: [],
+    inputModules: [],
     outputModules: [],
     input: [],
-    tick() {
+    tick(context: System) {
       if (this.input.length === 0) {
         return []
       }
 
-      this.process()
+      const outputs: Pulse[] = []
+      this.input.forEach((input) => {
+        const o = this.process(context, input)
+        outputs.push(...o)
+      })
       this.input = []
 
       return []
     },
-    process() {
-      this.values.push(...this.input.map(({ value }) => value))
-      // console.log('Output:', pulse)
+    process(context: System, input: Input) {
+      this.values.push(input.value)
 
       return []
     },
@@ -285,7 +275,7 @@ function getUntyped(name: string): Untyped {
 }
 
 function getSystem(): System {
-  const system: System = Object.fromEntries([
+  const system: System = [
     ...rawContent.split('\n').map((line) => {
       const [rawModule, rawDestinations] = line.split(' -> ')
       const outputModulesNames = rawDestinations.split(', ')
@@ -301,40 +291,31 @@ function getSystem(): System {
       } else {
         throw new Error('Unknown module type')
       }
-      return [module.name ?? module.type, module]
+      return module
     }),
-    ['button', getButton()],
-  ])
+    getButton(),
+  ]
 
-  const untyped: string[] = []
-
-  Object.values(system).forEach((module) => {
-    module.outputModulesNames.forEach((name) => {
-      if (!system[name]) {
-        untyped.push(name)
+  system.forEach((module) => {
+    module.outputModules.forEach((name) => {
+      const existingModule = system.find((module) => module.name === name)
+      if (!existingModule) {
+        system.push(getUntyped(name))
       }
     })
-  })
-
-  console.log(untyped)
-
-  untyped.forEach((name) => {
-    system[name] = getUntyped(name)
   })
 
   return system
 }
 
 function connectSystem(system: System) {
-  Object.values(system).forEach((module) => {
-    module.outputModules = module.outputModulesNames.map((name) => system[name])
-  })
-  Object.values(system).forEach((module) => {
-    module.outputModules.forEach((destination) => {
-      destination.inputModuleNames.push(module.name)
+  system.forEach((module) => {
+    module.outputModules.forEach((moduleName) => {
+      const existingModule = system.find((module) => module.name === moduleName)
+      existingModule!.inputModules.push(module.name)
     })
   })
-  Object.values(system).forEach((module) => {
+  system.forEach((module) => {
     module.init?.()
   })
 }
@@ -347,66 +328,45 @@ Object.values(system).forEach((module) => {
   console.log(
     module.type,
     module.name,
-    module.inputModuleNames,
-    module.outputModulesNames
+    module.inputModules,
+    module.outputModules
   )
 })
 
 function tickSystem(system: System): { high: number; low: number } {
   const pulses = { high: 0, low: 0 }
 
-  const modulesWithInputs = Object.values(system).filter(
-    (module) => module.input.length > 0
-  )
+  const modulesWithInputs = system.filter((module) => module.input.length > 0)
 
   const outputs2: Pulse[] = []
 
-  Object.values(system).forEach((module) => {
-    const outputs = module.tick()
+  modulesWithInputs.forEach((module) => {
+    const outputs = module.tick(system)
     outputs2.push(...outputs)
-    // outputs.forEach((pulse) => {
-    //   if (pulse === PULSE.HIGH) {
-    //     pulses.high += 1
-    //   } else {
-    //     pulses.low += 1
-    //   }
-    // })
-  })
 
-  outputs2.forEach((pulse) => {
-    if (pulse === PULSE.HIGH) {
-      pulses.high += 1
-    } else {
-      pulses.low += 1
-    }
+    outputs.forEach((pulse) => {
+      if (pulse === PULSE.HIGH) {
+        pulses.high += 1
+      } else {
+        pulses.low += 1
+      }
+    })
   })
-
-  // Object.values(system)
-  //   .filter((module) => module.input.length > 0)
-  //   .forEach((module) => {
-  //     module.input.forEach(({ module: name, value }) => {
-  //       if (value === PULSE.HIGH) {
-  //         pulses.high += 1
-  //       } else {
-  //         pulses.low += 1
-  //       }
-  //     })
-  //   })
 
   return pulses
 }
 
 function pushButton(system: System) {
-  system.button.input.push({ module: 'finger', value: PULSE.LOW })
+  system
+    .find((module) => module.name === 'button')!
+    .input.push({ module: 'finger', value: PULSE.LOW })
 }
 
 function runSystemCycle(system: System): { high: number; low: number } {
   const pulses = { high: 0, low: 0 }
   pushButton(system)
 
-  while (
-    Object.values(system).filter((module) => module.input.length > 0).length > 0
-  ) {
+  while (system.filter((module) => module.input.length > 0).length > 0) {
     const tickPulses = tickSystem(system)
 
     pulses.high += tickPulses.high
@@ -427,15 +387,10 @@ for (let i = 0; i < 1000; i++) {
 
 console.log('--------------------')
 console.log(pulses)
-console.log('--------------------')
-console.log(globalPulses)
 
 console.log('--------------------')
 console.log(pulses.high * pulses.low)
 
 // 547474692 too low
 // 567797844 too low
-// 567797844
-// 603670844
-// 568063960
-// 703315117 correct
+// 703315117
